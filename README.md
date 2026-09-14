@@ -64,7 +64,7 @@ Realne `cash` jest pokazywane obok osobno z zakładki Finanse.
   - Personal OS / mój progress
   - Ogólne / kilka obszarów
   - Money / BFI
-  - DigitalMap
+  - DM
   - NeneFL
   - Ciało / zdrowie
   - Życie / administracja
