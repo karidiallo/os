@@ -1,6 +1,6 @@
 import { categories, loadLocal, persistLocal, dateKey, isoAt, localParts, newDay } from "./state.js";
 import { getLevelInfo, xpForTask } from "./levels.js";
-import { sendMagicLink, signInPassword, setPassword, signOut, sendPasswordReset, onAuth, cloudHasData, hydrateCloud, syncCloud, seedSyncFingerprints, deleteTaskRow } from "./supabase.js";
+import { getSession, sendMagicLink, signInPassword, setPassword, signOut, sendPasswordReset, onAuth, cloudHasData, hydrateCloud, syncCloud, seedSyncFingerprints, deleteTaskRow } from "./supabase.js";
 
 let state=loadLocal();
 let user=null, cloudReady=false, syncTimer=null;
@@ -215,11 +215,43 @@ async function initAuth(){
     }
   };
 
-  // Single source of truth: auth events. No separate getSession() call,
-  // so INITIAL_SESSION is handled only once and the login UI does not flash.
+  // Listen for future auth changes, but do not rely on the auth event as the
+  // only bootstrap path. Some deployments/browsers can delay INITIAL_SESSION
+  // and leave the UI stuck on the boot gate forever.
   onAuth((event,session)=>{
-    setTimeout(()=>handleAuthEvent(event,session),0);
+    setTimeout(()=>{
+      void handleAuthEvent(event,session).catch(err=>{
+        console.error("Auth event handling failed:",err);
+        if(session?.user){
+          user=session.user;
+          showLoggedInApp();
+          renderAll();
+          syncStatus("tryb lokalny / błąd auth");
+        }else{
+          showLoggedOutEntry();
+          syncStatus("błąd logowania");
+        }
+      });
+    },0);
   });
+
+  // Explicit bootstrap fallback. getSession() reads the persisted Supabase
+  // session and guarantees that the boot screen is released even if
+  // INITIAL_SESSION does not arrive.
+  try{
+    const session=await getSession();
+    if(!authHandledInitial){
+      await handleAuthEvent("INITIAL_SESSION",session);
+    }
+  }catch(err){
+    console.error("Auth bootstrap failed:",err);
+    authHandledInitial=true;
+    user=null;
+    cloudReady=false;
+    hydratedUserId=null;
+    showLoggedOutEntry();
+    syncStatus("błąd połączenia");
+  }
 }
 
 async function hydrateAuthenticatedUser(session){
@@ -244,13 +276,25 @@ async function hydrateAuthenticatedUser(session){
     renderAll();
     openBriefingIfNeeded();
   }catch(e){
-    console.error(e);
+    console.error("Cloud hydration failed; continuing with local data:",e);
     cloudReady=false;
-    syncStatus("błąd synchronizacji");
+    // The dashboard must remain usable with local state even when Supabase
+    // hydration fails. Never send the user back to an endless loading state.
+    showLoggedInApp();
+    renderAll();
+    syncStatus("offline / błąd — dane lokalne");
+    openBriefingIfNeeded();
   }
 }
 
 async function handleAuthEvent(event,session){
+  // INITIAL_SESSION can now arrive from both the Supabase listener and our
+  // explicit getSession() bootstrap. Handle it exactly once.
+  if(event==="INITIAL_SESSION"){
+    if(authHandledInitial) return;
+    authHandledInitial=true;
+  }
+
   if(event==="TOKEN_REFRESHED"){
     if(session?.user) user=session.user;
     return;
@@ -311,7 +355,6 @@ async function handleAuthEvent(event,session){
   }
 
   if(event==="INITIAL_SESSION" && !session?.user){
-    authHandledInitial=true;
     showLoggedOutEntry();
     syncStatus("wylogowano");
     return;
