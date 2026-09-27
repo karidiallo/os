@@ -49,9 +49,57 @@ export function defaults() {
     ideas:[],proof:[],reviews:[],financeSnapshots:{},bodyLogs:{},dailyLogs:[]
   };
 }
+function normalizeDay(raw = {}) {
+  const base = newDay();
+  return {
+    ...base,
+    ...raw,
+    interview:{...base.interview,...(raw.interview||{})},
+    capacity:{...base.capacity,...(raw.capacity||{})},
+    top3:Array.isArray(raw.top3) ? [...raw.top3.slice(0,3),"",""].slice(0,3) : [...base.top3],
+    minimums:{...base.minimums,...(raw.minimums||{})}
+  };
+}
+
+export function normalizeState(raw) {
+  const base = defaults();
+  if(!raw || typeof raw !== "object") return base;
+
+  const merged = {
+    ...base,
+    ...raw,
+    days:{},
+    tasks:Array.isArray(raw.tasks) ? raw.tasks : [],
+    projects:{...base.projects,...(raw.projects && typeof raw.projects === "object" ? raw.projects : {})},
+    ideas:Array.isArray(raw.ideas) ? raw.ideas : [],
+    proof:Array.isArray(raw.proof) ? raw.proof : [],
+    reviews:Array.isArray(raw.reviews) ? raw.reviews : [],
+    financeSnapshots:raw.financeSnapshots && typeof raw.financeSnapshots === "object" ? raw.financeSnapshots : {},
+    bodyLogs:raw.bodyLogs && typeof raw.bodyLogs === "object" ? raw.bodyLogs : {},
+    dailyLogs:Array.isArray(raw.dailyLogs) ? raw.dailyLogs : []
+  };
+
+  for(const [day,value] of Object.entries(raw.days && typeof raw.days === "object" ? raw.days : {})){
+    merged.days[day]=normalizeDay(value);
+  }
+
+  return merged;
+}
+
 export function loadLocal() {
-  return JSON.parse(localStorage.getItem(STORAGE_KEY)||"null") || defaults();
+  try{
+    const raw=JSON.parse(localStorage.getItem(STORAGE_KEY)||"null");
+    const normalized=normalizeState(raw);
+    // Persist migrated shape so future boots do not hit the same legacy-state issue.
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(normalized));
+    return normalized;
+  }catch(err){
+    console.error("Local state could not be loaded; starting from defaults:",err);
+    const fallback=defaults();
+    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(fallback))}catch{}
+    return fallback;
+  }
 }
 export function persistLocal(state) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeState(state)));
 }
