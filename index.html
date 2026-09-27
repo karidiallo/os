@@ -423,6 +423,22 @@
   </div>
 
   <div id="toast" class="toast"></div>
+  <script>
+    // Boot watchdog: a failed ES-module/CDN import used to leave the UI on
+    // "Ładowanie systemu…" forever with no visible explanation.
+    window.__PERSONAL_OS_APP_STARTED__ = false;
+    window.addEventListener("error", function (event) {
+      console.error("Personal OS startup error:", event.error || event.message);
+    });
+    window.addEventListener("unhandledrejection", function (event) {
+      console.error("Personal OS unhandled rejection:", event.reason);
+    });
+    setTimeout(function () {
+      if (window.__PERSONAL_OS_APP_STARTED__) return;
+      var strong = document.querySelector("#bootGate strong");
+      if (strong) strong.textContent = "Nie udało się uruchomić aplikacji. Sprawdź konsolę / połączenie z modułami.";
+    }, 6000);
+  </script>
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>
