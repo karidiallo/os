@@ -1,6 +1,12 @@
 import { categories, loadLocal, persistLocal, dateKey, isoAt, localParts, newDay } from "./state.js";
 import { getLevelInfo, xpForTask } from "./levels.js";
-import { getSession, sendMagicLink, signInPassword, setPassword, signOut, sendPasswordReset, onAuth, cloudHasData, hydrateCloud, syncCloud, seedSyncFingerprints, deleteTaskRow } from "./supabase.js";
+let getSession, sendMagicLink, signInPassword, setPassword, signOut, sendPasswordReset, onAuth, cloudHasData, hydrateCloud, syncCloud, seedSyncFingerprints, deleteTaskRow;
+
+async function loadCloudModule(){
+  const mod = await import("./supabase.js");
+  ({getSession, sendMagicLink, signInPassword, setPassword, signOut, sendPasswordReset, onAuth, cloudHasData, hydrateCloud, syncCloud, seedSyncFingerprints, deleteTaskRow} = mod);
+  return mod;
+}
 
 let state=loadLocal();
 let user=null, cloudReady=false, syncTimer=null;
@@ -48,7 +54,7 @@ function sectionLabel(s){
 
 function save(){
   persistLocal(state);
-  if(cloudReady&&user){
+  if(cloudReady&&user&&syncCloud){
     clearTimeout(syncTimer);
     syncTimer=setTimeout(async()=>{
       try{
@@ -119,6 +125,17 @@ function showLoggedOutEntry(){
 }
 
 async function initAuth(){
+  try {
+    await loadCloudModule();
+  } catch (err) {
+    console.error("Cloud module failed to load:", err);
+    $("#bootGate")?.classList.add("hidden");
+    // Keep the app usable from local state instead of an infinite boot screen.
+    showLoggedInApp();
+    syncStatus("tryb lokalny — chmura niedostępna");
+    toast("Chmura nie załadowała się. Dashboard działa lokalnie.");
+    return;
+  }
   $("#firstEmailButton").onclick=async()=>{
     const email=$("#firstEmail").value.trim();
     if(!email){$("#firstEmailMessage").textContent="Wpisz email.";return}
@@ -800,7 +817,7 @@ async function deleteTask(id){
   state.tasks=state.tasks.filter(t=>t.id!==id);
   persistLocal(state);
   renderAll();
-  if(cloudReady&&user){
+  if(cloudReady&&user&&deleteTaskRow){
     try{
       await deleteTaskRow(id);
       seedSyncFingerprints(state);
