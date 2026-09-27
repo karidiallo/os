@@ -910,4 +910,29 @@ function renderIdeas(){$("#ideasGrid").innerHTML=state.ideas.map(x=>`<div class=
 $("#ideaForm").onsubmit=e=>{e.preventDefault();const v=$("#ideaTitle").value.trim();if(!v)return;state.ideas.unshift({id:uuid(),title:v,category:$("#ideaCategory").value,status:"Zaparkowany",createdAt:new Date().toISOString()});$("#ideaTitle").value="";save();renderIdeas()};
 
 window.addEventListener("online",()=>{syncStatus("online");save()});window.addEventListener("offline",()=>syncStatus("offline — zapis lokalny"));
-ensureDay();renderAll();initAuth();
+
+async function startApp(){
+  window.__PERSONAL_OS_APP_STARTED__=true;
+  try{
+    ensureDay();
+    renderAll();
+  }catch(err){
+    console.error("Initial render failed; continuing to auth with safe local state:",err);
+    // Do not let a rendering error prevent auth/bootstrap from running.
+  }
+
+  try{
+    await initAuth();
+  }catch(err){
+    console.error("Fatal auth/bootstrap error:",err);
+    try{
+      $("#bootGate")?.classList.add("hidden");
+      showLoggedOutEntry();
+      syncStatus("błąd startu");
+    }catch(fallbackErr){
+      console.error("Could not show auth fallback:",fallbackErr);
+    }
+  }
+}
+
+startApp();
